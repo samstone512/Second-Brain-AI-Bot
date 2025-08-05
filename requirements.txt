@@ -1,5 +1,5 @@
 python-telegram-bot==20.8
-openai
+google-generativeai
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
