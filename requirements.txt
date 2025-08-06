@@ -9,3 +9,4 @@ notion-client
 Pillow
 numpy
 nest_asyncio
+chromadb
