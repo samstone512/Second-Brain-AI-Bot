@@ -22,6 +22,7 @@ from pydub import AudioSegment
 import notion_client
 from PIL import Image
 import numpy as np
+import chromadb
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,8 @@ class VoiceAssistantBot:
         self.notion = notion_client.Client(auth=secrets['notion_key'])
         self.calendar_service = None
         self.recognizer = sr.Recognizer()
-        self.notion_db_properties = {}
+        #self.notion_db_properties = {}
+        self.collection = None # <-- برای کالکشن کروما
 
         try:
             genai.configure(api_key=secrets['gemini_api_key'])
@@ -41,6 +43,19 @@ class VoiceAssistantBot:
         except Exception as e:
             logging.error(f"❌ خطا در راه‌اندازی کلاینت Gemini: {e}")
             self.gemini_model = None
+        # ===== تغییر اصلی: راه‌اندازی ChromaDB Cloud =====
+        try:
+            logging.info("☁️ در حال اتصال به دیتابیس ابری ChromaDB...")
+            chroma_client = chromadb.CloudClient(
+                tenant='stonesam669',          # <-- نام Tenant شما از سایت
+                database='Second Brain',       # <-- نام دیتابیس شما از سایت
+                api_key=secrets['chroma_api_key']
+            )
+            self.collection = chroma_client.get_or_create_collection("second_brain_collection")
+            logging.info(f"✅ با موفقیت به کالکشن '{self.collection.name}' در ChromaDB Cloud متصل شدید.")
+        except Exception as e:
+            logging.error(f"❌ خطا در اتصال به ChromaDB Cloud: {e}", exc_info=True)
+        # ===============================================
 
     def _discover_notion_db_properties(self, db_id: str):
         if not db_id: return
