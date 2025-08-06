@@ -47,7 +47,7 @@ class VoiceAssistantBot:
         try:
             logging.info("☁️ در حال اتصال به دیتابیس ابری ChromaDB...")
             chroma_client = chromadb.CloudClient(
-                tenant='',          # <-- نام Tenant شما از سایت
+                tenant=secrets['chroma_tenant_id'],   # <-- نام Tenant شما از سایت
                 database='Second Brain',       # <-- نام دیتابیس شما از سایت
                 api_key=secrets['chroma_api_key']
             )
