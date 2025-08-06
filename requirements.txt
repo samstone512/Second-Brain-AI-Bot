@@ -7,6 +7,6 @@ pydub
 SpeechRecognition
 notion-client
 Pillow
-numpy
+numpy==1.26.4
 nest_asyncio
 chromadb
