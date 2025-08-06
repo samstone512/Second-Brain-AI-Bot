@@ -25,7 +25,8 @@ import numpy as np
 import chromadb
 
 logger = logging.getLogger(__name__)
-
+# =============================================================================================================================
+# =============================================================================================================================
 class VoiceAssistantBot:
     def __init__(self, secrets: Dict[str, str]):
         self.secrets = secrets
@@ -55,17 +56,153 @@ class VoiceAssistantBot:
             logging.info(f"✅ با موفقیت به کالکشن '{self.collection.name}' در ChromaDB Cloud متصل شدید.")
         except Exception as e:
             logging.error(f"❌ خطا در اتصال به ChromaDB Cloud: {e}", exc_info=True)
-        # ===============================================
-
-    def _discover_notion_db_properties(self, db_id: str):
-        if not db_id: return
+    # =============================================================================================================================
+    # =============================================================================================================================   
+    #def _discover_notion_db_properties(self, db_id: str):
+        #if not db_id: return
+        #try:
+            #db_info = self.notion.databases.retrieve(database_id=db_id)
+            #self.notion_db_properties[db_id] = db_info['properties']
+            #logging.info(f"✅ ساختار دیتابیس {db_id} با موفقیت شناسایی شد.")
+        #except Exception as e:
+            #logging.error(f"❌ خطا در شناسایی ساختار دیتابیس {db_id}: {e}")
+        # --- توابع مربوط به پردازشگر UKS و ChromaDB ---
+    # =============================================================================================================================
+    # =============================================================================================================================
+    def _load_prompt_template(self) -> str:
         try:
-            db_info = self.notion.databases.retrieve(database_id=db_id)
-            self.notion_db_properties[db_id] = db_info['properties']
-            logging.info(f"✅ ساختار دیتابیس {db_id} با موفقیت شناسایی شد.")
-        except Exception as e:
-            logging.error(f"❌ خطا در شناسایی ساختار دیتابیس {db_id}: {e}")
+            with open("prompt_template.txt", "r", encoding="utf-8") as f:
+                return f.read()
+        except FileNotFoundError:
+            logging.error("❌ فایل prompt_template.txt یافت نشد!")
+            return ""
+    # =============================================================================================================================
+    # =============================================================================================================================
+    async def _process_text_to_uks(self, text: str) -> Optional[Dict[str, Any]]:
+        if not self.gemini_model: return None
+        
+        prompt_template = self._load_prompt_template()
+        if not prompt_template: return None
 
+        final_prompt = prompt_template.replace("[<<متن خام ورودی از کاربر اینجا قرار می‌گیرد>>]", text)
+        
+        logging.info("🤖 در حال پردازش متن به ساختار UKS با Gemini...")
+        try:
+            response = self.gemini_model.generate_content(final_prompt)
+            # تمیز کردن خروجی برای اطمینان از اینکه فقط JSON باقی می‌ماند
+            json_text = response.text.strip()
+            if json_text.startswith("```json"):
+                json_text = json_text[7:]
+            if json_text.endswith("```"):
+                json_text = json_text[:-3]
+            
+            return json.loads(json_text)
+        except Exception as e:
+            logging.error(f"❌ خطا در تبدیل متن به UKS: {e}", exc_info=True)
+            return None
+    # =============================================================================================================================
+    # =============================================================================================================================
+    async def _add_uks_to_chromadb(self, uks_data: Dict[str, Any]) -> str:
+        if not self.collection:
+            return "❌ دیتابیس ChromaDB در دسترس نیست."
+
+        try:
+            # متنی که برای Embedding استفاده می‌شود، ترکیبی از عنوان و خلاصه است
+            text_to_embed = f"Title: {uks_data['core_content']['title']}\nSummary: {uks_data['core_content']['summary']}"
+            
+            logging.info(f"🧠 در حال ساخت Embedding برای: '{text_to_embed[:100]}...'")
+            embedding_response = genai.embed_content(
+                model=self.embedding_model,
+                content=text_to_embed,
+                task_type="RETRIEVAL_DOCUMENT"
+            )
+            embedding_vector = embedding_response['embedding']
+            
+            # تمام داده‌های UKS را به عنوان متادیتا ذخیره می‌کنیم
+            # متادیتا در کروما باید فقط شامل مقادیر string, int, float, bool باشد
+            metadata = {
+                "title": uks_data["core_content"]["title"],
+                "summary": uks_data["core_content"]["summary"],
+                "original_text": uks_data["core_content"]["original_text"],
+                "source_type": uks_data["source_and_context"]["source_type"],
+                # ... می‌توانید بقیه فیلدها را هم به صورت رشته اضافه کنید
+            }
+            
+            # هر دانش به یک شناسه منحصر به فرد نیاز دارد
+            doc_id = str(uuid.uuid4())
+            
+            self.collection.add(
+                ids=[doc_id],
+                embeddings=[embedding_vector],
+                documents=[text_to_embed], # متن اصلی که Embedding از آن ساخته شده
+                metadatas=[metadata]
+            )
+            logging.info(f"✅ دانش با شناسه {doc_id} با موفقیت در ChromaDB ذخیره شد.")
+            return f"✅ دانش جدید با عنوان «{metadata['title']}» در مغز دوم شما ذخیره شد."
+
+        except Exception as e:
+            logging.error(f"❌ خطا در ذخیره اطلاعات در ChromaDB: {e}", exc_info=True)
+            return "مشکلی در ذخیره اطلاعات در پایگاه دانش پیش آمد."
+    # =============================================================================================================================
+    # =============================================================================================================================
+    async def _query_from_chromadb(self, query: str) -> str:
+        if not self.collection:
+            return "❌ دیتابیس ChromaDB در دسترس نیست."
+        
+        try:
+            logging.info(f"🔎 در حال ساخت Embedding برای پرس‌وجوی: '{query}'")
+            query_embedding_response = genai.embed_content(
+                model=self.embedding_model,
+                content=query,
+                task_type="RETRIEVAL_QUERY"
+            )
+            query_vector = query_embedding_response['embedding']
+
+            # جستجو در کالکشن برای پیدا کردن 3 نتیجه برتر
+            results = self.collection.query(
+                query_embeddings=[query_vector],
+                n_results=3
+            )
+            
+            if not results or not results['documents'][0]:
+                return "متاسفانه مطلب مرتبطی در پایگاه دانش شما پیدا نکردم."
+
+            # آماده‌سازی نتایج برای ارسال به Gemini
+            context_str = ""
+            for i, metadata in enumerate(results['metadatas'][0]):
+                context_str += f"--- سند مرتبط شماره {i+1} ---\n"
+                context_str += f"عنوان: {metadata.get('title', 'نامشخص')}\n"
+                context_str += f"خلاصه: {metadata.get('summary', 'نامشخص')}\n\n"
+
+            final_prompt = f"شما یک دستیار هوش مصنوعی هستید که بر اساس پایگاه دانش شخصی کاربر به سوالات پاسخ می‌دهید. بر اساس «متن‌های مرتبط» زیر، به «سوال کاربر» یک پاسخ جامع و دقیق به زبان فارسی بدهید.\n\n{context_str}\n\n**سوال کاربر:**\n{query}\n\n**پاسخ شما (به فارسی):**"
+            
+            logging.info("✍️ در حال تولید پاسخ نهایی با Gemini...")
+            final_response = self.gemini_model.generate_content(final_prompt)
+            return final_response.text
+
+        except Exception as e:
+            logging.error(f"❌ خطا در فرآیند پرس‌وجو از ChromaDB: {e}", exc_info=True)
+            return "یک خطای غیرمنتظره در هنگام جستجو رخ داد."
+    # =============================================================================================================================
+    # =============================================================================================================================
+
+    # --- توابع مربوط به تلگرام و پردازش ورودی‌ها ---
+
+    async def _process_user_request(self, text: str, update: Update):
+        await update.message.reply_chat_action('typing')
+        
+        # در معماری جدید، تمام ورودی‌ها ابتدا به UKS تبدیل می‌شوند
+        uks_data = await self._process_text_to_uks(text)
+        
+        if not uks_data:
+            await update.message.reply_text("❌ مشکلی در تحلیل و درک پیام شما پیش آمد. لطفاً دوباره تلاش کنید.")
+            return
+
+        # سپس داده‌های ساختاریافته در ChromaDB ذخیره می‌شوند
+        response_text = await self._add_uks_to_chromadb(uks_data)
+        await update.message.reply_text(response_text)
+    # =============================================================================================================================
+    # =============================================================================================================================
     def _get_google_auth_creds(self) -> Optional[Credentials]:
         try:
             google_creds_json = json.loads(self.secrets['google_creds'])
@@ -90,7 +227,8 @@ class VoiceAssistantBot:
         except Exception as e:
             logging.error(f"❌ خطا در احراز هویت گوگل: {e}", exc_info=True)
             return None
-
+    # =============================================================================================================================
+    # =============================================================================================================================
     def setup_google_calendar(self) -> bool:
         print("\n⏳ در حال راه‌اندازی سرویس تقویم گوگل...")
         creds = self._get_google_auth_creds()
@@ -100,7 +238,8 @@ class VoiceAssistantBot:
             return True
         print("❌ راه‌اندازی سرویس تقویم گوگل ناموفق بود.")
         return False
-
+    # =============================================================================================================================
+    # =============================================================================================================================
     async def _analyze_text_with_gemini(self, text: str) -> Optional[Dict[str, Any]]:
         if not self.gemini_model:
             logging.error("کلاینت Gemini راه‌اندازی نشده است.")
@@ -241,7 +380,8 @@ class VoiceAssistantBot:
         except Exception as e:
             logging.error(f"❌ خطا در تحلیل با Gemini: {e}", exc_info=True)
             return None
-
+    # =============================================================================================================================
+    # =============================================================================================================================
     async def _create_calendar_event(self, entities: Dict[str, Any]) -> str:
         if not self.calendar_service:
             return "سرویس تقویم در دسترس نیست."
@@ -264,7 +404,8 @@ class VoiceAssistantBot:
         except Exception as e:
             logging.error(f"❌ خطا در ایجاد رویداد تقویم: {e}", exc_info=True)
             return "مشکلی در ایجاد رویداد تقویم پیش آمد."
-
+    # =============================================================================================================================
+    # =============================================================================================================================
     async def _add_to_knowledge_base(self, content: str) -> str:
         db_id = self.secrets.get('notion_kb_db_id')
         if not db_id: return "خطا: شناسه دیتابیس کتابخانه دانش تعریف نشده است."
@@ -291,7 +432,8 @@ class VoiceAssistantBot:
         except Exception as e:
             logging.error(f"❌ خطا در ذخیره در کتابخانه دانش: {e}", exc_info=True)
             return "مشکلی در ذخیره اطلاعات در نوشن پیش آمد."
-
+    # =============================================================================================================================
+    # =============================================================================================================================
     async def _query_knowledge_base(self, query: str) -> str:
         db_id = self.secrets.get('notion_kb_db_id')
         if not db_id: return "خطا: شناسه دیتابیس کتابخانه دانش تعریف نشده است."
@@ -342,7 +484,8 @@ class VoiceAssistantBot:
         except Exception as e:
             logging.error(f"❌ خطا در فرآیند پرس‌وجو: {e}", exc_info=True)
             return f"یک خطای غیرمنتظره در هنگام جستجو رخ داد: {e}"
-
+    # =============================================================================================================================
+    # =============================================================================================================================
     async def _process_user_request(self, text: str, update: Update):
         await update.message.reply_chat_action('typing')
         analysis = await self._analyze_text_with_gemini(text)
@@ -368,7 +511,8 @@ class VoiceAssistantBot:
             await update.message.reply_text(answer)
         else:
             await update.message.reply_text("🤔 متوجه منظور شما نشدم. لطفاً واضح‌تر بیان کنید.")
-
+    # =============================================================================================================================
+    # =============================================================================================================================
     async def _convert_voice_to_text(self, voice_file_path: str) -> str:
         logging.info("🎵 در حال تبدیل صدا به متن...")
         try:
@@ -385,7 +529,8 @@ class VoiceAssistantBot:
             if 'wav_path' in locals() and os.path.exists(wav_path):
                 os.remove(wav_path)
             return ""
-
+    # =============================================================================================================================
+    # =============================================================================================================================
     async def handle_voice_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🎤 پیام صوتی دریافت شد. لطفاً صبر کنید...")
         voice = update.message.voice
@@ -402,12 +547,21 @@ class VoiceAssistantBot:
             await self._process_user_request(text, update)
         else:
             await update.message.reply_text("❌ متاسفانه نتوانستم صدایتان را تشخیص دهم.")
-
+    # =============================================================================================================================
+    # =============================================================================================================================
     async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_text = update.message.text
-        logging.info(f"⌨️ پیام متنی دریافت شد: '{user_text}'")
-        await self._process_user_request(user_text, update)
-
+        # اگر کاربر با "بپرس:" یا "سوال:" شروع کند، آن را به عنوان پرس‌وجو در نظر می‌گیریم
+        if user_text.strip().startswith("بپرس:") or user_text.strip().startswith("سوال:"):
+            query = user_text.replace("بپرس:", "").replace("سوال:", "").strip()
+            logging.info(f"❓ پرس‌وجوی کاربر دریافت شد: '{query}'")
+            answer = await self._query_from_chromadb(query)
+            await update.message.reply_text(answer)
+        else:
+            logging.info(f"⌨️ پیام متنی برای ذخیره دریافت شد: '{user_text}'")
+            await self._process_user_request(user_text, update)
+    # =============================================================================================================================
+    # =============================================================================================================================
     async def handle_photo_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🖼️ تصویر دریافت شد. در حال استخراج متن با Gemini...")
         photo_file = await context.bot.get_file(update.message.photo[-1].file_id)
@@ -432,7 +586,8 @@ class VoiceAssistantBot:
             await update.message.reply_text("مشکلی در پردازش تصویر پیش آمد.")
             if os.path.exists(photo_path):
                 os.unlink(photo_path)
-
+    # =============================================================================================================================
+    # =============================================================================================================================
     async def run(self):
         logging.info("\n🚀 در حال راه‌اندازی ربات تلگرام...")
         app = Application.builder().token(self.secrets['telegram']).build()
