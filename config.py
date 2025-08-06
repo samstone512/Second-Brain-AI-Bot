@@ -9,7 +9,7 @@ def load_secrets() -> dict:
         "google_creds": userdata.get('Calendar_credentials'),
         "notion_key": userdata.get('NOTION_API_KEY'),
         "notion_ideas_db_id": userdata.get('NOTION_IDEAS_DB_ID'),
-        "notion_kb_db_id": userdata.get('NOTION_KB_DB_ID')
-        "chroma_api_key": userdata.get('CHROMADB_API_KEY')
+        "notion_kb_db_id": userdata.get('NOTION_KB_DB_ID'),
+        "chroma_api_key": userdata.get('CHROMADB_API_KEY'),
         "chroma_tenant_id": userdata.get('CHROMADB_TENANT_ID')
     }
