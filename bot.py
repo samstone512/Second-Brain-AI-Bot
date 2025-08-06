@@ -37,11 +37,12 @@ class VoiceAssistantBot:
             self.gemini_model = None
 
         try:
-            logging.info("☁️ در حال اتصال به دیتابیس ابری ChromaDB...")
-            chroma_client = chromadb.CloudClient(
-                tenant=secrets['chroma_tenant_id'],
-                database='Second Brain',
-                api_key=secrets['chroma_api_key']
+            logging.info("☁️ در حال اتصال به دیتابیس ابری ChromaDB (با متد جدید)...")
+            # این روش جدید و صحیح برای اتصال به ChromaDB Cloud است
+            chroma_client = chromadb.Client.from_cloud(
+            tenant=secrets['chroma_tenant_id'],
+            database='Second Brain',
+            api_key=secrets['chroma_api_key']
             )
             self.collection = chroma_client.get_or_create_collection("second_brain_collection")
             logging.info(f"✅ با موفقیت به کالکشن '{self.collection.name}' در ChromaDB Cloud متصل شدید.")
