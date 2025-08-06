@@ -36,32 +36,26 @@ class VoiceAssistantBot:
             logging.error(f"❌ خطا در راه‌اندازی کلاینت Gemini: {e}")
             self.gemini_model = None
 
-       try:
-            logging.info("☁️ در حال اتصال به دیتابیس ابری ChromaDB با HttpClient...")
-            # این پایدارترین روش برای اتصال به سرور راه دور است
-            chroma_client = chromadb.HttpClient(
-                host="api.trychroma.com",
-                port=443,
-                ssl=True,
-                headers={
-                    "X-Chroma-Token": secrets['chroma_api_key'],
-                    "X-Chroma-Tenant": secrets['chroma_tenant_id'],
-                    "X-Chroma-Database": "Second Brain"
-                }
+        # --- بلوک کد با تورفتگی صحیح ---
+        try:
+            logging.info("☁️ در حال اتصال به دیتابیس ابری ChromaDB...")
+            chroma_client = chromadb.CloudClient(
+                tenant=secrets['chroma_tenant_id'],
+                database='Second Brain',
+                api_key=secrets['chroma_api_key']
             )
             self.collection = chroma_client.get_or_create_collection("second_brain_collection")
             logging.info(f"✅ با موفقیت به کالکشن '{self.collection.name}' در ChromaDB Cloud متصل شدید.")
-            logging.info(f"تعداد آیتم‌های موجود در کالکشن: {self.collection.count()}")
         except Exception as e:
             logging.error(f"❌ خطا در اتصال به ChromaDB Cloud: {e}", exc_info=True)
-    # ==========================================================
+        # --------------------------------
 
     def _load_prompt_template(self) -> str:
         try:
             with open("prompt_template.txt", "r", encoding="utf-8") as f:
                 return f.read()
         except FileNotFoundError:
-            logging.error("❌ فایل prompt_template.txt یافت نشد! لطفاً مطمئن شوید این فایل در کنار پروژه شما وجود دارد.")
+            logging.error("❌ فایل prompt_template.txt یافت نشد!")
             return ""
 
     async def _process_text_to_uks(self, text: str) -> Optional[Dict[str, Any]]:
@@ -70,7 +64,6 @@ class VoiceAssistantBot:
         prompt_template = self._load_prompt_template()
         if not prompt_template: return None
 
-        # جایگزینی placeholder در پرامپت با متن خام کاربر
         final_prompt = prompt_template.replace("[<<متن خام ورودی از کاربر اینجا قرار می‌گیرد>>]", text)
         
         logging.info("🤖 در حال پردازش متن به ساختار UKS با Gemini...")
@@ -138,7 +131,7 @@ class VoiceAssistantBot:
 
             results = self.collection.query(
                 query_embeddings=[query_vector],
-                n_results=5 # می‌توانیم تعداد نتایج را افزایش دهیم
+                n_results=5
             )
             
             if not results or not results['documents'][0]:
@@ -160,27 +153,7 @@ class VoiceAssistantBot:
             logging.error(f"❌ خطا در فرآیند پرس‌وجو از ChromaDB: {e}", exc_info=True)
             return "یک خطای غیرمنتظره در هنگام جستجو رخ داد."
 
-    # --- توابع مربوط به تلگرام و پردازش ورودی‌ها ---
-
-    async def _convert_voice_to_text(self, voice_file_path: str) -> str:
-        logging.info("🎵 در حال تبدیل صدا به متن...")
-        try:
-            audio = AudioSegment.from_ogg(voice_file_path)
-            wav_path = voice_file_path + ".wav"
-            audio.export(wav_path, format="wav")
-            with sr.AudioFile(wav_path) as source:
-                audio_data = self.recognizer.record(source)
-            text = self.recognizer.recognize_google(audio_data, language='fa-IR')
-            os.remove(wav_path)
-            return text
-        except Exception as e:
-            logging.error(f"❌ خطا در تبدیل صدا به متن: {e}", exc_info=True)
-            if 'wav_path' in locals() and os.path.exists(wav_path):
-                os.remove(wav_path)
-            return ""
-
     async def handle_any_input(self, text: str, update: Update):
-        """یک تابع مرکزی برای پردازش تمام ورودی‌ها (متن، صوت، تصویر)."""
         await update.message.reply_chat_action('typing')
         uks_data = await self._process_text_to_uks(text)
         
@@ -202,6 +175,23 @@ class VoiceAssistantBot:
         else:
             logging.info(f"⌨️ پیام متنی برای ذخیره دریافت شد: '{user_text}'")
             await self.handle_any_input(user_text, update)
+
+    async def _convert_voice_to_text(self, voice_file_path: str) -> str:
+        logging.info("🎵 در حال تبدیل صدا به متن...")
+        try:
+            audio = AudioSegment.from_ogg(voice_file_path)
+            wav_path = voice_file_path + ".wav"
+            audio.export(wav_path, format="wav")
+            with sr.AudioFile(wav_path) as source:
+                audio_data = self.recognizer.record(source)
+            text = self.recognizer.recognize_google(audio_data, language='fa-IR')
+            os.remove(wav_path)
+            return text
+        except Exception as e:
+            logging.error(f"❌ خطا در تبدیل صدا به متن: {e}", exc_info=True)
+            if 'wav_path' in locals() and os.path.exists(wav_path):
+                os.remove(wav_path)
+            return ""
 
     async def handle_voice_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🎤 پیام صوتی دریافت شد. لطفاً صبر کنید...")
@@ -243,14 +233,7 @@ class VoiceAssistantBot:
             await update.message.reply_text("مشکلی در پردازش تصویر پیش آمد.")
             if os.path.exists(photo_path):
                 os.unlink(photo_path)
-    
-    # توابع مربوط به تقویم که فعلاً استفاده نمی‌شوند
-    def setup_google_calendar(self) -> bool:
-        return True # موقتاً غیرفعال
-        
-    def _get_google_auth_creds(self) -> Optional[Credentials]:
-        pass
-        
+
     async def run(self):
         logging.info("\n🚀 در حال راه‌اندازی ربات تلگرام...")
         app = Application.builder().token(self.secrets['telegram']).build()
