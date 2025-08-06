@@ -13,17 +13,20 @@ async def start():
     logging.info("🤖 شروع به کار دستیار شخصی هوشمند (از پروژه ماژولار)...")
     try:
         secrets = load_secrets()
-        if not all([secrets["telegram"], secrets["deepseek_api"], secrets["notion_key"]]):
-            logging.critical("❌ خطا: کلیدهای اصلی تعریف نشده‌اند.")
+        # --- اصلاحیه اصلی اینجاست ---
+        if not all([secrets["telegram"], secrets["gemini_api_key"], secrets["notion_key"]]):
+            logging.critical("❌ خطا: کلیدهای اصلی (تلگرام، جمینی، نوشن) تعریف نشده‌اند.")
             return
 
         bot = VoiceAssistantBot(secrets)
-
-        if secrets.get('notion_ideas_db_id'):
-            bot._discover_notion_db_properties(secrets['notion_ideas_db_id'])
-        if secrets.get('notion_kb_db_id'):
-            bot._discover_notion_db_properties(secrets['notion_kb_db_id'])
         
+        # این بخش دیگر ضروری نیست چون از نوشن به عنوان دیتابیس استفاده نمی‌کنیم
+        # if secrets.get('notion_ideas_db_id'):
+        #     bot._discover_notion_db_properties(secrets['notion_ideas_db_id'])
+        # if secrets.get('notion_kb_db_id'):
+        #     bot._discover_notion_db_properties(secrets['notion_kb_db_id'])
+        
+        # تابع setup_google_calendar همچنان برای تقویم لازم است
         if bot.setup_google_calendar():
             await bot.run()
             
