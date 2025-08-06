@@ -10,4 +10,5 @@ def load_secrets() -> dict:
         "notion_key": userdata.get('NOTION_API_KEY'),
         "notion_ideas_db_id": userdata.get('NOTION_IDEAS_DB_ID'),
         "notion_kb_db_id": userdata.get('NOTION_KB_DB_ID')
+         "chroma_api_key": userdata.get('CHROMADB_API_KEY')
     }
