@@ -36,20 +36,25 @@ class VoiceAssistantBot:
             logging.error(f"❌ خطا در راه‌اندازی کلاینت Gemini: {e}")
             self.gemini_model = None
 
-        try:
-            logging.info("☁️ در حال اتصال به دیتابیس ابری ChromaDB (با متد جدید)...")
-            # این روش جدید و صحیح برای اتصال به ChromaDB Cloud است
-            chroma_client = chromadb.Client.from_cloud(
-            tenant=secrets['chroma_tenant_id'],
-            database='Second Brain',
-            api_key=secrets['chroma_api_key']
+       try:
+            logging.info("☁️ در حال اتصال به دیتابیس ابری ChromaDB با HttpClient...")
+            # این پایدارترین روش برای اتصال به سرور راه دور است
+            chroma_client = chromadb.HttpClient(
+                host="api.trychroma.com",
+                port=443,
+                ssl=True,
+                headers={
+                    "X-Chroma-Token": secrets['chroma_api_key'],
+                    "X-Chroma-Tenant": secrets['chroma_tenant_id'],
+                    "X-Chroma-Database": "Second Brain"
+                }
             )
             self.collection = chroma_client.get_or_create_collection("second_brain_collection")
             logging.info(f"✅ با موفقیت به کالکشن '{self.collection.name}' در ChromaDB Cloud متصل شدید.")
+            logging.info(f"تعداد آیتم‌های موجود در کالکشن: {self.collection.count()}")
         except Exception as e:
             logging.error(f"❌ خطا در اتصال به ChromaDB Cloud: {e}", exc_info=True)
-
-    # --- توابع مربوط به پردازشگر UKS و ChromaDB ---
+    # ==========================================================
 
     def _load_prompt_template(self) -> str:
         try:
