@@ -27,13 +27,13 @@ async def start():
         #     bot._discover_notion_db_properties(secrets['notion_kb_db_id'])
         
         # تابع setup_google_calendar همچنان برای تقویم لازم است
-        if bot.setup_google_calendar():
-            await bot.run()
+        #if bot.setup_google_calendar():
+        await bot.run()
             
     except Exception as e:
         logging.critical(f"یک خطای مرگبار در اجرای برنامه رخ داد: {e}", exc_info=True)
 
-if __name__ == "__main__":
-    import nest_asyncio
-    nest_asyncio.apply()
-    asyncio.run(start())
+#if __name__ == "__main__":
+    #import nest_asyncio
+    #nest_asyncio.apply()
+    #asyncio.run(start())
