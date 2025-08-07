@@ -3,11 +3,7 @@ google-generativeai==0.7.2
 pinecone-client==4.1.2
 python-dotenv==1.0.1
 uuid==1.30
-google-auth-httplib2
-google-auth-oauthlib
-pydub
-SpeechRecognition
-notion-client
-Pillow
-numpy
-nest_asyncio
+pydub==0.25.1
+SpeechRecognition==3.10.4
+Pillow==10.4.0
+nest_asyncio==1.6.0
