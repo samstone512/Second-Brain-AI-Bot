@@ -4,7 +4,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from config import load_secrets
 from core.ai_services import AIService
 from core.vector_db import VectorDBService
-from telegram.handlers import start, handle_text_message, handle_voice_message, handle_photo_message
+# این خط تغییر کرده است
+from telegram_bot.handlers import start, handle_text_message, handle_voice_message, handle_photo_message
 
 def main() -> None:
     """Starts the bot and wires up all the services."""
