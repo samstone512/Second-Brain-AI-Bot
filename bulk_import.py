@@ -1,28 +1,25 @@
-import os
 import logging
 from pathlib import Path
+import time  # <-- ۱. کتابخانه زمان را وارد می‌کنیم
 
-# وارد کردن سرویس‌ها و ابزارهای مورد نیاز از پروژه اصلی
 from config import load_secrets
 from core.ai_services import AIService
 from core.vector_db import VectorDBService
 from telegram_bot.utils import convert_voice_to_text, extract_text_from_image
 
-# تنظیمات پایه برای لاگ‌گیری
+# ... (بخش اول کد بدون تغییر باقی می‌ماند) ...
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# تعریف پسوندهای فایل‌های پشتیبانی شده
 SUPPORTED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg']
 SUPPORTED_AUDIO_EXTENSIONS = ['.ogg', '.mp3', '.wav', '.m4a']
 SUPPORTED_TEXT_EXTENSIONS = ['.txt', '.md']
 
-
-def process_file(file_path: Path, ai_service: AIService, db_service: VectorDBService):
-    """یک فایل را پردازش، محتوای آن را استخراج و در دیتابیس ذخیره می‌کند."""
+def process_file(file_path: Path, ai_service: AIService, db_service: VectorDBService) -> bool:
+    # ... (محتوای این تابع بدون تغییر باقی می‌ماند) ...
     logger.info(f"--- Processing file: {file_path.name} ---")
     
     raw_text = None
@@ -31,12 +28,10 @@ def process_file(file_path: Path, ai_service: AIService, db_service: VectorDBSer
     try:
         if file_path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS:
             source_type = "Screenshot"
-            # async/await اینجا کار نمی‌کند، باید تابع را مستقیم صدا بزنیم
             raw_text = extract_text_from_image(str(file_path))
         
         elif file_path.suffix.lower() in SUPPORTED_AUDIO_EXTENSIONS:
             source_type = "Audio File"
-            # async/await اینجا کار نمی‌کند، باید تابع را مستقیم صدا بزنیم
             raw_text = convert_voice_to_text(str(file_path))
 
         elif file_path.suffix.lower() in SUPPORTED_TEXT_EXTENSIONS:
@@ -75,8 +70,6 @@ def process_file(file_path: Path, ai_service: AIService, db_service: VectorDBSer
         logger.critical(f"A critical error occurred while processing {file_path.name}: {e}", exc_info=True)
         return False
 
-# --- شروع اصلاحیه ---
-# تابع اصلی را تغییر می‌دهیم تا مسیر را به عنوان آرگومان دریافت کند
 def run_import(directory_path: str):
     """نقطه ورود اصلی برای پردازش دسته‌ای که از نوت‌بوک فراخوانی می‌شود."""
     
@@ -98,21 +91,28 @@ def run_import(directory_path: str):
     
     success_count = 0
     failure_count = 0
-
-    for file_path in input_directory.iterdir():
-        if file_path.is_file():
-            if process_file(file_path, ai_service, db_service):
-                success_count += 1
-            else:
-                failure_count += 1
+    
+    # گرفتن لیست فایل‌ها برای پردازش
+    files_to_process = [f for f in input_directory.iterdir() if f.is_file()]
+    total_files = len(files_to_process)
+    
+    for i, file_path in enumerate(files_to_process):
+        logger.info(f"\n--- Processing file {i+1}/{total_files} ---")
+        if process_file(file_path, ai_service, db_service):
+            success_count += 1
+        else:
+            failure_count += 1
+        
+        # --- شروع اصلاحیه ---
+        # ۲. اگر این آخرین فایل نیست، یک وقفه کوتاه ایجاد کن
+        if i < total_files - 1:
+            sleep_duration = 3
+            logger.info(f"--- Cooling down for {sleep_duration} seconds to respect API rate limits... ---")
+            time.sleep(sleep_duration)
+        # --- پایان اصلاحیه ---
     
     logger.info("\n" + "="*50)
     logger.info("Bulk Import Summary")
     logger.info(f"  Successfully processed: {success_count} files")
     logger.info(f"  Failed to process: {failure_count} files")
     logger.info("="*50)
-
-# این بخش را حذف می‌کنیم تا فایل به صورت خودکار اجرا نشود
-# if __name__ == "__main__":
-#     main()
-# --- پایان اصلاحیه ---
