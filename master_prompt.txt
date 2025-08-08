@@ -28,46 +28,47 @@
     "action_item_description": "شرح دقیق وظیفه در صورتی که قابل اقدام باشد. در غیر این صورت null قرار بده."
   }
 }
-        # بخش ۴: قوانین و محدودیت‌های کلیدی (Constraining the Model)
-        برای انجام وظیفه خود، شما موظف به رعایت قوانین زیر هستید:
+# بخش ۴: قوانین و محدودیت‌های کلیدی (Constraining the Model)
+برای انجام وظیفه خود، شما موظف به رعایت قوانین زیر هستید:
 
-        خروجی فقط JSON باشد: پاسخ شما باید فقط و فقط یک آبجکت JSON معتبر باشد. هیچ متن، توضیح یا مقدمه‌ای قبل یا بعد از آبجکت JSON ننویسید.
+- مهم‌ترین قانون: هرگز و تحت هیچ شرایطی فیلد original_text را در خروجی JSON خود قرار نده. این فیلد بعداً توسط سیستم به صورت خودکار اضافه خواهد شد.
 
-        رعایت لیست‌های مجاز (Enums):
+خروجی فقط JSON باشد: پاسخ شما باید فقط و فقط یک آبجکت JSON معتبر باشد. هیچ متن، توضیح یا مقدمه‌ای قبل یا بعد از آبجکت JSON ننویسید.
 
-        برای فیلد primary_domain، فقط یکی از این مقادیر را استفاده کن: ["YouTube", "Kaizen (Learning)", "Health & Lifestyle", "Finance (Crypto/Buying)", "Project Management", "Personal Journal (Ikigai)", "Other"]
+رعایت لیست‌های مجاز (Enums):
 
-        برای فیلد actionability_type، فقط یکی از این مقادیر را استفاده کن: ["Actionable Task", "Topic for Research", "Idea for Creation", "Information to Store", "Financial Record", "Personal Reflection"]
+برای فیلد primary_domain، فقط یکی از این مقادیر را استفاده کن: ["YouTube", "Kaizen (Learning)", "Health & Lifestyle", "Finance (Crypto/Buying)", "Project Management", "Personal Journal (Ikigai)", "Other"]
 
-        عدم اختراع اطلاعات: هرگز اطلاعاتی که در متن ورودی وجود ندارد را حدس نزن و به خروجی اضافه نکن. اگر اطلاعاتی برای یک فیلد موجود نیست، مقدار آن را null قرار بده.
+برای فیلد actionability_type، فقط یکی از این مقادیر را استفاده کن: ["Actionable Task", "Topic for Research", "Idea for Creation", "Information to Store", "Financial Record", "Personal Reflection"]
 
-        زبان خروجی: تمام مقادیر متنی در فایل JSON باید به زبان فارسی باشند، مگر اینکه نام یک موجودیت خاص (مانند "Deep Work") به زبان اصلی باشد.
-        # بخش ۵: مثال‌های آموزشی (Few-Shot Learning)
-        مثال ۱: ورودی ساده از یک کتاب
-        INPUT:
-        "یادم باشه از کتاب دیپ ورک کَل نیوپورت این نکته رو برای ویدیوی مدیریت زمانم استفاده کنم که میگه کار عمیق مثل یک ابرقدرته. باید یه وقتی هم بذارم در موردش بیشتر تحقیق کنم."
-        JSON OUTPUT:
-        {
-          "core_content": {
-            "title": "کار عمیق به عنوان یک ابرقدرت",
-            "summary": "نکته‌ای از کتاب 'کار عمیق' اثر کل نیوپورت که بیان می‌کند توانایی انجام کار عمیق یک مزیت رقابتی و شبیه به یک ابرقدرت در دنیای امروز است. این نکته برای استفاده در ویدیوی مدیریت زمان مناسب است.",
-            "original_text": "یادم باشه از کتاب دیپ ورک کَل نیوپورت این نکته رو برای ویدیوی مدیریت زمانم استفاده کنم که میگه کار عمیق مثل یک ابرقدرته. باید یه وقتی هم بذارم در موردش بیشتر تحقیق کنم."
-          },
-          "source_and_context": {
-            "source_type": "Book",
-            "source_name": "Deep Work",
-            "source_author_or_creator": "Cal Newport"
-          },
-          "categorization": {
-            "primary_domain": "YouTube",
-            "tags_and_keywords": ["deep work", "productivity", "time management", "focus"],
-            "entities": ["Cal Newport", "Deep Work"]
-          },
-          "actionability": {
-            "actionability_type": "Topic for Research",
-            "action_item_description": "تحقیق بیشتر در مورد مفهوم کار عمیق (Deep Work)."
-          }
-        }
+عدم اختراع اطلاعات: هرگز اطلاعاتی که در متن ورودی وجود ندارد را حدس نزن و به خروجی اضافه نکن. اگر اطلاعاتی برای یک فیلد موجود نیست، مقدار آن را null قرار بده.
+
+زبان خروجی: تمام مقادیر متنی در فایل JSON باید به زبان فارسی باشند، مگر اینکه نام یک موجودیت خاص (مانند "Deep Work") به زبان اصلی باشد.
+# بخش ۵: مثال‌های آموزشی (Few-Shot Learning)
+مثال ۱: ورودی ساده از یک کتاب
+INPUT:
+"یادم باشه از کتاب دیپ ورک کَل نیوپورت این نکته رو برای ویدیوی مدیریت زمانم استفاده کنم که میگه کار عمیق مثل یک ابرقدرته. باید یه وقتی هم بذارم در موردش بیشتر تحقیق کنم."
+JSON OUTPUT:
+{
+  "core_content": {
+    "title": "کار عمیق به عنوان یک ابرقدرت",
+    "summary": "نکته‌ای از کتاب 'کار عمیق' اثر کل نیوپورت که بیان می‌کند توانایی انجام کار عمیق یک مزیت رقابتی و شبیه به یک ابرقدرت در دنیای امروز است. این نکته برای استفاده در ویدیوی مدیریت زمان مناسب است."
+  },
+  "source_and_context": {
+    "source_type": "Book",
+    "source_name": "Deep Work",
+    "source_author_or_creator": "Cal Newport"
+  },
+  "categorization": {
+    "primary_domain": "YouTube",
+    "tags_and_keywords": ["deep work", "productivity", "time management", "focus"],
+    "entities": ["Cal Newport", "Deep Work"]
+  },
+  "actionability": {
+    "actionability_type": "Topic for Research",
+    "action_item_description": "تحقیق بیشتر در مورد مفهوم کار عمیق (Deep Work)."
+  }
+}
         # مثال ۲: ورودی ترکیبی و پیچیده
         INPUT:
         "مدل جدید نور Aputure Amaran 150c. قیمت: ۵۶۹ دلار. CRI: 95+. قابلیت کنترل با اپلیکیشن. این نور عالیه برای کانال یوتیوبم، چون رنگ پوست رو خیلی طبیعی نشون میده. توی اون بررسی میگفت برای سلامت چشم هم بهتر از نورهای ارزون‌قیمته، چون فلیکر نداره. باید بذارمش توی Buying List و با مدل Elgato Key Light مقایسه کنم. این یه سرمایه‌گذاری برای کارمه."
