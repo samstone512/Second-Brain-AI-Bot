@@ -1,13 +1,11 @@
 import os
 import logging
-import argparse
 from pathlib import Path
 
 # وارد کردن سرویس‌ها و ابزارهای مورد نیاز از پروژه اصلی
 from config import load_secrets
 from core.ai_services import AIService
 from core.vector_db import VectorDBService
-# توجه: مسیر ایمپورت‌ها به دلیل ساختار پروژه تغییر کرده است
 from telegram_bot.utils import convert_voice_to_text, extract_text_from_image
 
 # تنظیمات پایه برای لاگ‌گیری
@@ -26,24 +24,22 @@ SUPPORTED_TEXT_EXTENSIONS = ['.txt', '.md']
 def process_file(file_path: Path, ai_service: AIService, db_service: VectorDBService):
     """یک فایل را پردازش، محتوای آن را استخراج و در دیتابیس ذخیره می‌کند."""
     logger.info(f"--- Processing file: {file_path.name} ---")
-
+    
     raw_text = None
     source_type = "Unknown"
 
     try:
-        # تشخیص نوع فایل و استخراج متن
         if file_path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS:
-            logger.info("Image file detected. Extracting text...")
             source_type = "Screenshot"
+            # async/await اینجا کار نمی‌کند، باید تابع را مستقیم صدا بزنیم
             raw_text = extract_text_from_image(str(file_path))
-
+        
         elif file_path.suffix.lower() in SUPPORTED_AUDIO_EXTENSIONS:
-            logger.info("Audio file detected. Converting to text...")
             source_type = "Audio File"
+            # async/await اینجا کار نمی‌کند، باید تابع را مستقیم صدا بزنیم
             raw_text = convert_voice_to_text(str(file_path))
 
         elif file_path.suffix.lower() in SUPPORTED_TEXT_EXTENSIONS:
-            logger.info("Text file detected. Reading content...")
             source_type = "Text File"
             raw_text = file_path.read_text(encoding='utf-8')
 
@@ -51,31 +47,27 @@ def process_file(file_path: Path, ai_service: AIService, db_service: VectorDBSer
             logger.warning(f"Unsupported file type: {file_path.suffix}. Skipping.")
             return False
 
-        # اگر متنی استخراج نشد، فایل را رها کن
         if not raw_text or not raw_text.strip():
             logger.error(f"No text could be extracted from {file_path.name}. Skipping.")
             return False
 
         logger.info(f"Extracted Text: '{raw_text[:100].strip()}...'")
 
-        # 1. Process text to structured JSON (UKS)
         uks_data = ai_service.process_text_to_uks(raw_text, source=source_type)
         if not uks_data:
             logger.error(f"Failed to convert text to UKS for {file_path.name}.")
             return False
 
-        # 2. Generate embedding for the knowledge
         vector = ai_service.get_embedding(uks_data)
         if not vector:
             logger.error(f"Failed to create embedding for {file_path.name}.")
             return False
 
-        # 3. Upsert the data and vector to Pinecone
         knowledge_id = db_service.upsert_knowledge(uks_data, vector)
         if not knowledge_id:
             logger.error(f"Failed to upsert knowledge for {file_path.name} to Pinecone.")
             return False
-
+            
         logger.info(f"✅ Successfully processed and stored {file_path.name} with ID: {knowledge_id}")
         return True
 
@@ -83,51 +75,44 @@ def process_file(file_path: Path, ai_service: AIService, db_service: VectorDBSer
         logger.critical(f"A critical error occurred while processing {file_path.name}: {e}", exc_info=True)
         return False
 
-
-def main():
-    """نقطه ورود اصلی برای اسکریپت پردازش دسته‌ای."""
-
-    # استفاده از argparse برای دریافت مسیر پوشه از طریق خط فرمان
-    parser = argparse.ArgumentParser(description="Bulk import files into the Second Brain.")
-    parser.add_argument("directory", type=str, help="The path to the directory containing files to import.")
-    args = parser.parse_args()
-
-    input_directory = Path(args.directory)
+# --- شروع اصلاحیه ---
+# تابع اصلی را تغییر می‌دهیم تا مسیر را به عنوان آرگومان دریافت کند
+def run_import(directory_path: str):
+    """نقطه ورود اصلی برای پردازش دسته‌ای که از نوت‌بوک فراخوانی می‌شود."""
+    
+    input_directory = Path(directory_path)
     if not input_directory.is_dir():
         logger.critical(f"Error: The provided path '{input_directory}' is not a valid directory.")
         return
 
-    # بارگذاری کلیدها و راه‌اندازی سرویس‌ها
     logger.info("Loading secrets and initializing services...")
     try:
         secrets = load_secrets()
         ai_service = AIService(api_key=secrets["GOOGLE_API_KEY"])
         db_service = VectorDBService(api_key=secrets["PINECONE_API_KEY"], index_name=secrets["PINECONE_INDEX_NAME"])
     except Exception as e:
-        logger.critical(f"Failed to initialize services. Aborting. Error: {e}")
+        logger.critical(f"Failed to initialize services. Aborting. Error: {e}", exc_info=True)
         return
 
     logger.info(f"Starting bulk import from directory: '{input_directory}'")
-
-    # شمارنده‌ها برای گزارش نهایی
+    
     success_count = 0
     failure_count = 0
 
-    # پیمایش تمام فایل‌های داخل پوشه
     for file_path in input_directory.iterdir():
         if file_path.is_file():
             if process_file(file_path, ai_service, db_service):
                 success_count += 1
             else:
                 failure_count += 1
-
-    # گزارش نهایی
+    
     logger.info("\n" + "="*50)
     logger.info("Bulk Import Summary")
     logger.info(f"  Successfully processed: {success_count} files")
     logger.info(f"  Failed to process: {failure_count} files")
     logger.info("="*50)
 
-
-if __name__ == "__main__":
-    main()
+# این بخش را حذف می‌کنیم تا فایل به صورت خودکار اجرا نشود
+# if __name__ == "__main__":
+#     main()
+# --- پایان اصلاحیه ---
