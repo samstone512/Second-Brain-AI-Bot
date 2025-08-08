@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
-import time  # <-- ۱. کتابخانه زمان را وارد می‌کنیم
+import time
+from google.api_core.exceptions import TooManyRequests # <-- ایمپورت کردن خطای مشخص
 
 from config import load_secrets
 from core.ai_services import AIService
@@ -19,9 +20,7 @@ SUPPORTED_AUDIO_EXTENSIONS = ['.ogg', '.mp3', '.wav', '.m4a']
 SUPPORTED_TEXT_EXTENSIONS = ['.txt', '.md']
 
 def process_file(file_path: Path, ai_service: AIService, db_service: VectorDBService) -> bool:
-    # ... (محتوای این تابع بدون تغییر باقی می‌ماند) ...
     logger.info(f"--- Processing file: {file_path.name} ---")
-    
     raw_text = None
     source_type = "Unknown"
 
@@ -29,15 +28,12 @@ def process_file(file_path: Path, ai_service: AIService, db_service: VectorDBSer
         if file_path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS:
             source_type = "Screenshot"
             raw_text = extract_text_from_image(str(file_path))
-        
         elif file_path.suffix.lower() in SUPPORTED_AUDIO_EXTENSIONS:
             source_type = "Audio File"
             raw_text = convert_voice_to_text(str(file_path))
-
         elif file_path.suffix.lower() in SUPPORTED_TEXT_EXTENSIONS:
             source_type = "Text File"
             raw_text = file_path.read_text(encoding='utf-8')
-
         else:
             logger.warning(f"Unsupported file type: {file_path.suffix}. Skipping.")
             return False
@@ -50,29 +46,31 @@ def process_file(file_path: Path, ai_service: AIService, db_service: VectorDBSer
 
         uks_data = ai_service.process_text_to_uks(raw_text, source=source_type)
         if not uks_data:
-            logger.error(f"Failed to convert text to UKS for {file_path.name}.")
+            # این بخش نیازی به False برگرداندن ندارد چون خود تابع بالاتر لاگ خطا را ثبت می‌کند
             return False
 
         vector = ai_service.get_embedding(uks_data)
         if not vector:
-            logger.error(f"Failed to create embedding for {file_path.name}.")
             return False
 
         knowledge_id = db_service.upsert_knowledge(uks_data, vector)
         if not knowledge_id:
-            logger.error(f"Failed to upsert knowledge for {file_path.name} to Pinecone.")
             return False
             
         logger.info(f"✅ Successfully processed and stored {file_path.name} with ID: {knowledge_id}")
         return True
-
+    
+    # --- شروع اصلاحیه ---
+    except TooManyRequests:
+        logger.error(f"RATE LIMIT EXCEEDED while processing {file_path.name}. Skipping this file for now.")
+        return False
+    # --- پایان اصلاحیه ---
     except Exception as e:
         logger.critical(f"A critical error occurred while processing {file_path.name}: {e}", exc_info=True)
         return False
 
 def run_import(directory_path: str):
-    """نقطه ورود اصلی برای پردازش دسته‌ای که از نوت‌بوک فراخوانی می‌شود."""
-    
+    # ... (بخش اول این تابع بدون تغییر باقی می‌ماند) ...
     input_directory = Path(directory_path)
     if not input_directory.is_dir():
         logger.critical(f"Error: The provided path '{input_directory}' is not a valid directory.")
@@ -92,24 +90,23 @@ def run_import(directory_path: str):
     success_count = 0
     failure_count = 0
     
-    # گرفتن لیست فایل‌ها برای پردازش
     files_to_process = [f for f in input_directory.iterdir() if f.is_file()]
     total_files = len(files_to_process)
     
     for i, file_path in enumerate(files_to_process):
-        logger.info(f"\n--- Processing file {i+1}/{total_files} ---")
+        logger.info(f"\n--- Processing file {i+1}/{total_files}: {file_path.name} ---")
         if process_file(file_path, ai_service, db_service):
             success_count += 1
         else:
             failure_count += 1
         
-        # --- شروع اصلاحیه ---
-        # ۲. اگر این آخرین فایل نیست، یک وقفه کوتاه ایجاد کن
         if i < total_files - 1:
-            sleep_duration = 3
+            # --- شروع اصلاحیه ---
+            # وقفه را به ۶ ثانیه افزایش می‌دهیم تا مطمئن‌تر باشیم (۱۰ درخواست در دقیقه)
+            sleep_duration = 6
+            # --- پایان اصلاحیه ---
             logger.info(f"--- Cooling down for {sleep_duration} seconds to respect API rate limits... ---")
             time.sleep(sleep_duration)
-        # --- پایان اصلاحیه ---
     
     logger.info("\n" + "="*50)
     logger.info("Bulk Import Summary")
