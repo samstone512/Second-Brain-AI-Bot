@@ -69,20 +69,30 @@ class AIService:
             logger.error(f"LLM Raw Response was: {raw_response_for_log}")
             return None
 
+    # --- شروع تغییر اصلی ---
     def get_document_embedding(self, uks_data: dict) -> list | None:
-        """برای یک دانش ساختاریافته، یک Embedding از نوع DOCUMENT تولید می‌کند."""
-        title = uks_data.get("core_content", {}).get("title", "")
-        summary = uks_data.get("core_content", {}).get("summary", "")
-        tags = uks_data.get("categorization", {}).get("tags_and_keywords", [])
-        
-        text_to_embed = f"Title: {title}\nSummary: {summary}\nTags: {', '.join(tags)}"
-        logger.info(f"Generating DOCUMENT embedding for: '{text_to_embed[:100]}...'")
-
+        """
+        یک پاراگراف معنایی از دانش ساختاریافته تولید کرده و برای آن یک Embedding می‌سازد.
+        """
         try:
+            # استخراج اطلاعات با مقادیر پیش‌فرض
+            title = uks_data.get("core_content", {}).get("title", "")
+            summary = uks_data.get("core_content", {}).get("summary", "")
+            tags = uks_data.get("categorization", {}).get("tags_and_keywords", [])
+            primary_domain = uks_data.get("categorization", {}).get("primary_domain", "")
+            
+            # ساخت یک پاراگراف طبیعی و معنایی
+            semantic_paragraph = f"این دانش در حوزه '{primary_domain}' قرار دارد و عنوان آن '{title}' است. "
+            semantic_paragraph += f"خلاصه این دانش به این شرح است: {summary}. "
+            if tags:
+                semantic_paragraph += f"مفاهیم و کلمات کلیدی اصلی مرتبط با آن عبارتند از: {', '.join(tags)}."
+
+            logger.info(f"Generating DOCUMENT embedding for semantic paragraph: '{semantic_paragraph[:150]}...'")
+
             result = genai.embed_content(
                 model=self.embedding_model,
-                content=text_to_embed,
-                task_type="RETRIEVAL_DOCUMENT"
+                content=semantic_paragraph,
+                task_type="RETRIEVAL_DOCUMENT" # <--- به حالت اصلی و صحیح خود بازگشت
             )
             logger.info("Successfully generated document embedding.")
             return result['embedding']
@@ -91,23 +101,21 @@ class AIService:
             return None
 
     def get_query_embedding(self, query: str) -> list | None:
-        """برای یک سوال (query)، یک Embedding تولید می‌کند."""
+        """برای یک سوال (query)، یک Embedding از نوع QUERY تولید می‌کند."""
         logger.info(f"Generating QUERY embedding for: '{query}'")
         try:
-            # --- تغییر اصلی برای دیباگ ---
-            # ما به صورت موقت از همان نوع داکیومنت برای کوئری هم استفاده می‌کنیم
-            # تا ببینیم آیا مشکل از تفاوت بین دو نوع embedding است یا خیر.
+            # بازگرداندن به حالت صحیح و نهایی
             result = genai.embed_content(
                 model=self.embedding_model,
                 content=query,
-                task_type="RETRIEVAL_DOCUMENT" # <--- موقتاً تغییر کرده است
+                task_type="RETRIEVAL_QUERY" # <--- به حالت اصلی و صحیح خود بازگشت
             )
-            # --- پایان تغییر ---
-            logger.info("Successfully generated query embedding (using DOCUMENT task_type for debug).")
+            logger.info("Successfully generated query embedding.")
             return result['embedding']
         except Exception as e:
             logger.error(f"Failed to generate query embedding: {e}", exc_info=True)
             return None
+    # --- پایان تغییر اصلی ---
 
     def generate_rag_response(self, query: str, context: str) -> str:
         """بر اساس سوال کاربر و کانتکست یافت‌شده، پاسخ نهایی را تولید می‌کند."""
