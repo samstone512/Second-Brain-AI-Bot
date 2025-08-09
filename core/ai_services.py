@@ -13,7 +13,6 @@ class AIService:
             self.generative_model = genai.GenerativeModel('gemini-1.5-flash-latest')
             self.embedding_model = 'models/text-embedding-004'
             self.master_prompt_template = self._load_prompt_template('master_prompt.txt')
-            # --- افزوده شده برای فاز ۳ ---
             self.rag_prompt_template = self._load_prompt_template('rag_prompt.txt')
             logger.info("✅ سرویس هوش مصنوعی (Gemini) با موفقیت راه‌اندازی شد.")
         except Exception as e:
@@ -91,23 +90,25 @@ class AIService:
             logger.error(f"Failed to generate document embedding: {e}", exc_info=True)
             return None
 
-    # --- متد جدید برای فاز ۳ ---
     def get_query_embedding(self, query: str) -> list | None:
-        """برای یک سوال (query)، یک Embedding از نوع QUERY تولید می‌کند."""
+        """برای یک سوال (query)، یک Embedding تولید می‌کند."""
         logger.info(f"Generating QUERY embedding for: '{query}'")
         try:
+            # --- تغییر اصلی برای دیباگ ---
+            # ما به صورت موقت از همان نوع داکیومنت برای کوئری هم استفاده می‌کنیم
+            # تا ببینیم آیا مشکل از تفاوت بین دو نوع embedding است یا خیر.
             result = genai.embed_content(
                 model=self.embedding_model,
                 content=query,
-                task_type="RETRIEVAL_QUERY"
+                task_type="RETRIEVAL_DOCUMENT" # <--- موقتاً تغییر کرده است
             )
-            logger.info("Successfully generated query embedding.")
+            # --- پایان تغییر ---
+            logger.info("Successfully generated query embedding (using DOCUMENT task_type for debug).")
             return result['embedding']
         except Exception as e:
             logger.error(f"Failed to generate query embedding: {e}", exc_info=True)
             return None
 
-    # --- متد جدید برای فاز ۳ ---
     def generate_rag_response(self, query: str, context: str) -> str:
         """بر اساس سوال کاربر و کانتکست یافت‌شده، پاسخ نهایی را تولید می‌کند."""
         logger.info("Generating RAG response...")
