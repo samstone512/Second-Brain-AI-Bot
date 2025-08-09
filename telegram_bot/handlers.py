@@ -1,6 +1,7 @@
 import logging
 import os
 import tempfile
+import json #  افزودن ایمپورت
 from telegram import Update, PhotoSize
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
@@ -15,7 +16,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     await update.message.reply_html(
         f"سلام {user.mention_html()}!\n\n"
-        "من دستیار 'مغز دوم' شما هستم. هر متن، صوت یا تصویری برای من ارسال کنید را پردازش کرده و در پایگاه دانش شما ذخیره می‌کنم.",
+        "من دستیار 'مغز دوم' شما هستم.\n\n"
+        "هر متن، صوت یا تصویری برای من ارسال کنید را پردازش کرده و در پایگاه دانش شما ذخیره می‌کنم.\n\n"
+        "برای پرسیدن سوال از دانش ذخیره شده، از دستور `/ask` استفاده کنید.\n"
+        "مثال: <code>/ask امید چیست؟</code>"
     )
 
 async def _process_and_store_text(text: str, source: str, update: Update, context: ContextTypes.DEFAULT_TYPE, reply_to_message_id: int):
@@ -29,7 +33,8 @@ async def _process_and_store_text(text: str, source: str, update: Update, contex
             await context.bot.send_message(chat_id, "❌ خطا: نتوانستم متن شما را به فرمت دانش استاندارد تبدیل کنم.", reply_to_message_id=reply_to_message_id)
             return
 
-        vector = ai_service.get_embedding(uks_data)
+        # نام متد برای خوانایی بهتر تغییر کرده است
+        vector = ai_service.get_document_embedding(uks_data)
         if not vector:
             await context.bot.send_message(chat_id, "❌ خطا: نتوانستم بردار معنایی (Embedding) دانش را تولید کنم.", reply_to_message_id=reply_to_message_id)
             return
@@ -50,17 +55,14 @@ async def _process_and_store_text(text: str, source: str, update: Update, contex
         logger.error(f"An unexpected error occurred in _process_and_store_text: {e}", exc_info=True)
         await context.bot.send_message(chat_id, f"❌ یک خطای غیرمنتظره رخ داد: {e}", reply_to_message_id=reply_to_message_id)
 
-
+# --- هندلرهای پیام ورودی ---
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     raw_text = update.message.text
     logger.info(f"⌨️ Text message received: '{raw_text[:50]}...'")
-    # Reply to the specific message being processed
     await _process_and_store_text(raw_text, "Telegram Text Message", update, context, reply_to_message_id=update.message.message_id)
 
 async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("🎤 Voice message received.")
-    
-    # Reply to the voice message to indicate start of processing
     processing_message = await update.message.reply_text("در حال تبدیل پیام صوتی به متن...")
     
     with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as temp_file:
@@ -78,24 +80,17 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
         await processing_message.edit_text("❌ متاسفانه نتوانستم صدایتان را تشخیص دهم.")
 
 async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles both single photos and albums (groups of photos)."""
     logger.info("🖼️ Photo message received.")
-    
-    # For albums, media_group_id is present. We process only the first message of an album.
     if update.message.media_group_id and context.chat_data.get(update.message.media_group_id):
         return
     if update.message.media_group_id:
         context.chat_data[update.message.media_group_id] = True
 
-    # Process each photo in the message (usually one, but can be more in an album)
     photos = update.message.photo
     if not photos:
-        # This can happen if the message is part of an album but has no photo itself (e.g., a caption)
         return
 
-    # Use the highest resolution photo
     photo_to_process: PhotoSize = photos[-1]
-    
     processing_message = await update.message.reply_text(f"در حال استخراج متن از تصویر...")
     
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_photo:
@@ -111,3 +106,57 @@ async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYP
         await _process_and_store_text(text, "Screenshot", update, context, reply_to_message_id=update.message.message_id)
     else:
         await processing_message.edit_text("❌ متنی در تصویر یافت نشد.")
+
+# --- هندلر جدید برای فاز ۳: RAG ---
+async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles the /ask command for intelligent retrieval."""
+    query = " ".join(context.args)
+    if not query:
+        await update.message.reply_text(
+            "لطفاً سوال خود را بعد از دستور /ask بنویسید.\n"
+            "مثال: `/ask ایده اصلی کتاب قدرت شروع ناقص چیست؟`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
+    logger.info(f"❓ Ask command received with query: '{query}'")
+    processing_message = await update.message.reply_text("🔎 در حال جستجو در پایگاه دانش شما...")
+
+    ai_service: AIService = context.bot_data["ai_service"]
+    db_service: VectorDBService = context.bot_data["db_service"]
+    
+    try:
+        # 1. Get query embedding
+        query_vector = ai_service.get_query_embedding(query)
+        if not query_vector:
+            await processing_message.edit_text("❌ خطا در ساخت بردار معنایی برای سوال شما.")
+            return
+
+        # 2. Search for similar documents in Pinecone
+        search_results = db_service.search(query_vector, top_k=3)
+
+        # 3. Build the context
+        context_str = ""
+        if not search_results:
+            context_str = "No relevant information found in the knowledge base."
+        else:
+            # فرمت‌دهی زیبا برای کانتکست
+            formatted_results = []
+            for i, doc in enumerate(search_results):
+                title = doc.get('core_content', {}).get('title', 'N/A')
+                summary = doc.get('core_content', {}).get('summary', 'N/A')
+                formatted_results.append(f"Source {i+1}:\n- Title: {title}\n- Summary: {summary}")
+            context_str = "\n\n".join(formatted_results)
+        
+        logger.info(f"Context built for RAG:\n{context_str}")
+        await processing_message.edit_text("🧠 در حال تولید پاسخ بر اساس دانش یافت‌شده...")
+
+        # 4. Generate the final response
+        final_answer = ai_service.generate_rag_response(query, context_str)
+
+        # 5. Send the answer
+        await processing_message.edit_text(final_answer, parse_mode=ParseMode.MARKDOWN)
+
+    except Exception as e:
+        logger.error(f"An error occurred in ask_command: {e}", exc_info=True)
+        await processing_message.edit_text(f"❌ یک خطای غیرمنتظره در پردازش سوال شما رخ داد: {e}")
