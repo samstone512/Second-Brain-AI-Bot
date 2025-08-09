@@ -4,11 +4,11 @@ import nest_asyncio
 
 # --- تغییر اصلی اینجاست: تنظیمات لاگ‌گیری در بالاترین سطح برنامه ---
 # این کار تضمین می‌کند که تمام لاگ‌های ما در خروجی Colab نمایش داده شوند.
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+#logging.basicConfig(
+#    level=logging.INFO,
+#    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+#    datefmt='%Y-%m-%d %H:%M:%S'
+#)
 # --- پایان تغییر ---
 
 # اعمال پچ برای محیط‌هایی مانند Colab که event loop در حال اجرا دارند
