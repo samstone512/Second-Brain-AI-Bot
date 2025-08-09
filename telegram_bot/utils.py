@@ -41,12 +41,17 @@ def convert_voice_to_text(voice_file_path: str) -> str:
             os.remove(wav_path)
 
 def extract_text_from_image(image_path: str) -> str:
-    """متن را از یک فایل تصویری استخراج می‌کند. (نسخه همزمان)"""
+    """متن را از یک فایل تصویری استخراج می‌کند. (نسخه همزمان و چندزبانه)"""
     logger.info(f"🖼️ Extracting text from image: {image_path}")
     try:
         img = Image.open(image_path)
         model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        response = model.generate_content(["Extract all Persian text from this image.", img])
+        
+        # --- شروع اصلاحیه ---
+        # دستور را به یک دستور عمومی برای استخراج تمام متون تغییر می‌دهیم
+        response = model.generate_content(["Extract all text from this image.", img])
+        # --- پایان اصلاحیه ---
+
         extracted_text = response.text
         logger.info(f"✅ Text extracted successfully: '{extracted_text[:100]}...'")
         return extracted_text.strip()
