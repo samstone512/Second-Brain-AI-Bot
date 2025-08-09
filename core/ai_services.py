@@ -2,6 +2,7 @@ import logging
 import json
 import google.generativeai as genai
 from pathlib import Path
+import re # <-- ۱. کتابخانه عبارات باقاعده را وارد می‌کنیم
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,6 @@ class AIService:
 
     def _load_master_prompt(self):
         try:
-            # این مسیر به درستی فایل پرامپت را از ریشه پروژه پیدا می‌کند
             prompt_path = Path(__file__).parent.parent / 'master_prompt.txt'
             return prompt_path.read_text(encoding='utf-8')
         except FileNotFoundError:
@@ -36,18 +36,29 @@ class AIService:
 
         try:
             response = self.generative_model.generate_content(prompt)
-            json_string = response.text.strip().replace('```json', '').replace('```', '').strip()
+            raw_response_text = response.text
             
-            # مدل فقط بخش‌های تحلیلی را برمی‌گرداند
+            # --- شروع اصلاحیه: استخراج هوشمند JSON ---
+            # ۲. از عبارات باقاعده برای پیدا کردن بلوک JSON استفاده می‌کنیم
+            # این الگو به دنبال هر چیزی می‌گردد که بین ```json و ``` یا بین { و } قرار دارد
+            match = re.search(r'```json\s*(\{.*?\})\s*```|(\{.*?\})', raw_response_text, re.DOTALL)
+            
+            if not match:
+                logger.error("Could not find a valid JSON block in the LLM's response.")
+                logger.error(f"LLM Raw Response was: {raw_response_text}")
+                return None
+            
+            # گروهی که پیدا شده را به عنوان رشته JSON استخراج می‌کنیم
+            json_string = match.group(1) or match.group(2)
+            # --- پایان اصلاحیه ---
+
             analytical_data = json.loads(json_string)
             
-            # ما خودمان آبجکت نهایی و معتبر UKS را می‌سازیم
             uks_data = analytical_data
             
-            # اطمینان از وجود ساختار صحیح و اضافه کردن امن متن اصلی
             if 'core_content' not in uks_data:
                 uks_data['core_content'] = {}
-            uks_data['core_content']['original_text'] = text # <--- اینجا متن اصلی اضافه می‌شود
+            uks_data['core_content']['original_text'] = text
 
             if 'source_and_context' not in uks_data:
                  uks_data['source_and_context'] = {}
@@ -56,8 +67,10 @@ class AIService:
             logger.info("Successfully generated UKS data.")
             return uks_data
         except (json.JSONDecodeError, Exception) as e:
+            # حالا که پاسخ خام را قبل از هر کاری ذخیره کرده‌ایم، لاگ دقیق‌تری خواهیم داشت
+            raw_response_for_log = locals().get('raw_response_text', 'Response not captured')
             logger.error(f"Failed to process text to UKS for file. Error: {e}", exc_info=True)
-            logger.error(f"LLM Raw Response was: {getattr(response, 'text', 'N/A')}")
+            logger.error(f"LLM Raw Response was: {raw_response_for_log}")
             return None
 
     def get_embedding(self, uks_data: dict) -> list | None:
@@ -80,3 +93,5 @@ class AIService:
         except Exception as e:
             logger.error(f"Failed to generate embedding: {e}", exc_info=True)
             return None
+ 
+
