@@ -1,6 +1,6 @@
 import logging
 import uuid
-import json  #  ایمپورت کردن کتابخانه json
+import json
 from pinecone import Pinecone, ServerlessSpec
 
 logger = logging.getLogger(__name__)
@@ -33,22 +33,15 @@ class VectorDBService:
         knowledge_id = str(uuid.uuid4())
         logger.info(f"Preparing to upsert data with ID: {knowledge_id}")
         
-        # --- شروع اصلاحیه ---
-        # Pinecone مقادیر تودرتو (دیکشنری) را در متادیتا قبول نمی‌کند.
-        # ما باید تمام فیلدهایی که دیکشنری یا لیست هستند را به رشته JSON تبدیل کنیم.
         metadata_to_store = {}
         for key, value in uks_data.items():
             if isinstance(value, (dict, list)):
                 try:
-                    # تبدیل دیکشنری یا لیست به یک رشته متنی با فرمت JSON
                     metadata_to_store[key] = json.dumps(value, ensure_ascii=False)
                 except TypeError:
-                    # اگر به هر دلیلی قابل تبدیل نبود، آن را به یک رشته ساده تبدیل کن
                     metadata_to_store[key] = str(value)
             else:
-                # مقادیر ساده (متن، عدد، بولین) را دست‌نخورده باقی بگذار
                 metadata_to_store[key] = value
-        # --- پایان اصلاحیه ---
 
         try:
             self.pinecone_index.upsert(
@@ -59,3 +52,37 @@ class VectorDBService:
         except Exception as e:
             logger.error(f"Failed to upsert data to Pinecone: {e}", exc_info=True)
             return None
+
+    # --- متد جدید برای فاز ۳ ---
+    def search(self, vector: list, top_k: int = 5) -> list[dict]:
+        """دانش‌های مرتبط را بر اساس یک بردار جستجو می‌کند."""
+        logger.info(f"Searching for top {top_k} similar documents.")
+        if not vector:
+            logger.warning("Search called with an empty vector.")
+            return []
+            
+        try:
+            results = self.pinecone_index.query(
+                vector=vector,
+                top_k=top_k,
+                include_metadata=True
+            )
+            
+            processed_matches = []
+            for match in results.get('matches', []):
+                metadata = match.get('metadata', {})
+                # بازگرداندن فیلدهای JSON به حالت اولیه (دیکشنری)
+                for key, value in metadata.items():
+                    if isinstance(value, str) and (value.startswith('{') or value.startswith('[')):
+                        try:
+                            metadata[key] = json.loads(value)
+                        except json.JSONDecodeError:
+                            # اگر تبدیل ناموفق بود، همان رشته باقی بماند
+                            pass
+                processed_matches.append(metadata)
+
+            logger.info(f"Found {len(processed_matches)} relevant documents.")
+            return processed_matches
+        except Exception as e:
+            logger.error(f"An error occurred during Pinecone search: {e}", exc_info=True)
+            return []
